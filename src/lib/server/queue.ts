@@ -61,6 +61,11 @@ export class FairQueue {
 		this.pump();
 	}
 
+	/** Requests of `user` waiting now. */
+	queued(user: string): number {
+		return this.queues.get(user)?.length ?? 0;
+	}
+
 	get waiting(): number {
 		let n = 0;
 		for (const q of this.queues.values()) n += q.length;

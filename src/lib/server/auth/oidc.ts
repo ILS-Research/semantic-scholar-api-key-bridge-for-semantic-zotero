@@ -29,14 +29,18 @@ export function groupsOf(p: any): string[] {
 	return (Array.isArray(p?.groups) ? p.groups : []).map((g: unknown) => String(g).replace(/^\//, ''));
 }
 
-/** Audience and role/group checks on a verified payload. */
-export function checkClaims(p: JWTPayload & Record<string, any>, o: OidcOptions): void {
+/**
+ * Audience and role/group checks on a verified payload; returns the accepted client: `azp` if it
+ * is a configured audience, else the first configured audience in `aud`.
+ */
+export function checkClaims(p: JWTPayload & Record<string, any>, o: OidcOptions): string {
 	const aud = Array.isArray(p.aud) ? p.aud : p.aud ? [p.aud] : [];
-	if (!o.audience.some((a) => aud.includes(a) || p.azp === a)) throw new AuthError(401, 'token is not issued for this bridge');
-	if (!o.requiredRoles.length && !o.requiredGroups.length) return;
+	const client = o.audience.includes(p.azp) ? (p.azp as string) : o.audience.find((a) => aud.includes(a));
+	if (!client) throw new AuthError(401, 'token is not issued for this bridge');
+	if (!o.requiredRoles.length && !o.requiredGroups.length) return client;
 	const roles = rolesOf(p);
 	const groups = groupsOf(p);
-	if (o.requiredRoles.some((r) => roles.includes(r)) || o.requiredGroups.some((g) => groups.includes(g.replace(/^\//, '')))) return;
+	if (o.requiredRoles.some((r) => roles.includes(r)) || o.requiredGroups.some((g) => groups.includes(g.replace(/^\//, '')))) return client;
 	throw new AuthError(403, 'account lacks the required role or group');
 }
 
@@ -61,8 +65,8 @@ export function oidcVerifier(o: OidcOptions): (token: string) => Promise<Identit
 			if (e instanceof errors.JOSEError) throw new AuthError(401, 'invalid token');
 			throw e;
 		}
-		checkClaims(payload as any, o);
+		const client = checkClaims(payload as any, o);
 		if (!payload.sub) throw new AuthError(401, 'token without subject');
-		return { id: `oidc:${payload.sub}`, method: 'oidc' };
+		return { id: `oidc:${payload.sub}`, method: 'oidc', client };
 	};
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (30.09.2026)
+
+- MCP servers / Open WebUI: several OIDC clients (`OIDC_AUDIENCE` list), access levels per client
+  (`OIDC_CLIENT_SCOPES`, `papers` or `papers+authors`); author endpoints only for `papers+authors`
+  (403 otherwise, unknown paths still 404, checked before authentication).
+- Per-user cap `MAX_QUEUED_PER_USER` (default 10): more waiting requests get 429 + Retry-After at once.
+- Status page: requests, forwarded requests and average time per client; refusals by scope and cap.
+
 ## 0.1.0 (30.09.2026)
 
 - First version: forwards read-only paper endpoints of the Semantic Scholar API with a shared key.

@@ -34,7 +34,7 @@ test('no credentials: 401 with a hint; unknown endpoint: 404', async () => {
 	const r = await get('/graph/v1/paper/X');
 	assert.equal(r.status, 401);
 	assert.match((await r.json()).message, /Bearer .*Zotero-API-Key/);
-	assert.equal((await get('/graph/v1/author/1', { 'zotero-api-key': MEMBER })).status, 404);
+	assert.equal((await get('/datasets/v1/release/latest', { 'zotero-api-key': MEMBER })).status, 404);
 });
 
 test('OIDC: valid token forwarded with the shared key only', async () => {
@@ -117,4 +117,33 @@ test('POST batch and recommendations', async () => {
 
 test('404 from Semantic Scholar passed through', async () => {
 	assert.equal((await get('/graph/v1/paper/MISSING', { 'zotero-api-key': MEMBER })).status, 404);
+});
+
+test('client scopes: authors for the MCP client (openwebui), 403 for Semantic Zotero and Zotero keys', async () => {
+	await reset();
+	const mcp = await token({ aud: 'account', azp: 'openwebui', sub: 'user-mcp', realm_access: { roles: ['s2-users'] } });
+	const r = await get('/graph/v1/author/1741101/papers?fields=title', { authorization: `Bearer ${mcp}` });
+	assert.equal(r.status, 200);
+	assert.equal((await get('/graph/v1/paper/M1', { authorization: `Bearer ${mcp}` })).status, 200);
+	assert.equal((await get('/graph/v1/author/1741101', { authorization: `Bearer ${await good()}` })).status, 403);
+	assert.equal((await get('/graph/v1/author/1741101', { 'zotero-api-key': MEMBER })).status, 403);
+	const seen = await s2Requests();
+	assert.deepEqual(seen.map((s) => s.path), ['/graph/v1/author/1741101/papers', '/graph/v1/paper/M1']);
+	assert.equal(seen[0].headers['x-api-key'], 'bridge-key');
+	assert.equal(seen[0].headers.authorization, undefined);
+	assert.match(await (await get('/')).text(), /openwebui/);
+});
+
+test('queue cap: a looping agent gets 429 with Retry-After, others still get through', async () => {
+	await reset();
+	const agent = { authorization: `Bearer ${await token({ aud: 'account', azp: 'openwebui', sub: 'agent', realm_access: { roles: ['s2-users'] } })}` };
+	const burst = Promise.all(Array.from({ length: 8 }, (_, i) => get(`/graph/v1/paper/Q${i}`, agent)));
+	await new Promise((r) => setTimeout(r, 30));
+	const other = await get('/graph/v1/paper/Q-other', { 'zotero-api-key': MEMBER });
+	const statuses = (await burst).map((r) => r.status);
+	assert.equal(other.status, 200);
+	assert.ok(statuses.filter((s) => s === 429).length >= 4, `statuses ${statuses}`);
+	assert.ok(statuses.filter((s) => s === 200).length >= 3, `statuses ${statuses}`);
+	const refused = (await burst).find((r) => r.status === 429);
+	assert.ok(Number(refused.headers.get('retry-after')) >= 1);
 });

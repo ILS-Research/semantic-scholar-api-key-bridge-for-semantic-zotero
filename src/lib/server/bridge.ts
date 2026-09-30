@@ -1,16 +1,17 @@
 /**
- * The bridge: allowlist → authentication → cache → fair queue → Semantic Scholar.
+ * The bridge: allowlist (any scope) → authentication → allowlist (client's scope) → per-user cap →
+ * cache → fair queue → Semantic Scholar.
  * Responses carry X-Bridge-Cache: hit|miss. Errors are JSON {error, message}.
  */
 import { createHash } from 'node:crypto';
-import { isAllowed } from './allowlist';
-import { Authenticator, AuthError, type Verifier } from './auth';
+import { isAllowed, type Scope } from './allowlist';
+import { Authenticator, AuthError, type Identity, type Verifier } from './auth';
 import { oidcVerifier } from './auth/oidc';
 import { zoteroVerifier } from './auth/zotero';
 import { ResponseCache } from './cache';
 import type { Config } from './config';
 import { FairQueue, QueueTimeout } from './queue';
-import { stats } from './stats';
+import { clientStat, stats } from './stats';
 import { forward, UpstreamBusy, UpstreamError } from './upstream';
 
 const MAX_BODY = 1024 * 1024;
@@ -60,9 +61,9 @@ export class Bridge {
 			return json(404, 'not_allowed', 'This endpoint is not available through the bridge.');
 		}
 
-		let userId: string;
+		let who: Identity;
 		try {
-			userId = (await this.auth.authenticate(request.headers)).id;
+			who = await this.auth.authenticate(request.headers);
 		} catch (e) {
 			if (e instanceof AuthError) {
 				stats.rejectedAuth++;
@@ -72,6 +73,14 @@ export class Bridge {
 			stats.errors++;
 			log(`auth backend error: ${(e as Error).message}`);
 			return json(502, 'auth_unavailable', 'The authentication service could not be reached.');
+		}
+		const userId = who.id;
+		const client = who.method === 'oidc' ? (who.client ?? 'oidc') : who.method;
+		const cs = clientStat(client);
+		cs.requests++;
+		if (!isAllowed(method, url.pathname, this.scopeOf(who))) {
+			stats.rejectedScope++;
+			return json(403, 'forbidden', 'This endpoint is not available for your client.');
 		}
 
 		let body: Uint8Array | undefined;
@@ -87,6 +96,13 @@ export class Bridge {
 			return this.respond(hit, 'hit');
 		}
 
+		const max = this.cfg.maxQueuedPerUser;
+		if (max > 0 && this.queue.queued(userId) >= max) {
+			stats.overQueued++;
+			const retry = Math.max(1, Math.ceil(this.queue.queued(userId) / this.cfg.ratePerSec));
+			return json(429, 'too_many_requests', `More than ${max} of your requests are waiting; slow down.`, { 'retry-after': String(retry) });
+		}
+
 		const t0 = Date.now();
 		try {
 			const res = await forward(
@@ -98,6 +114,8 @@ export class Bridge {
 				() => stats.upstreamRetries++
 			);
 			stats.upstreamRequests++;
+			cs.upstream++;
+			cs.upstreamMs += Date.now() - t0;
 			if (res.status === 200) this.cache.set(cacheKey, res, this.cfg.cacheTtlMs);
 			else if (res.status === 404) this.cache.set(cacheKey, res, this.cfg.cacheNotFoundTtlMs);
 			log(`${tag(userId)} ${method} ${url.pathname.split('/').slice(0, 4).join('/')}… ${res.status} ${Date.now() - t0} ms`);
@@ -112,6 +130,11 @@ export class Bridge {
 			log(`upstream error: ${(e as Error).message}`);
 			return json(502, e instanceof UpstreamError ? 'upstream_unreachable' : 'error', 'Semantic Scholar could not be reached.');
 		}
+	}
+
+	private scopeOf(who: Identity): Scope {
+		if (who.method !== 'oidc' || !who.client) return 'papers';
+		return this.cfg.oidc.clientScopes[who.client] ?? 'papers';
 	}
 
 	private respond(r: { status: number; contentType: string; body: Uint8Array }, cache: 'hit' | 'miss'): Response {

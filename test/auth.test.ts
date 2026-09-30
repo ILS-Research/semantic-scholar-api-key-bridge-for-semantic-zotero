@@ -33,8 +33,14 @@ describe('oidc', () => {
 		oidcVerifier({ issuer, audience: ['semantic-zotero'], requiredRoles: [], requiredGroups: [], ...extra });
 
 	it('accepts a token for the audience, or with azp (Keycloak)', async () => {
-		expect(await verifier()(await token({ aud: 'semantic-zotero' }))).toEqual({ id: 'oidc:user-1', method: 'oidc' });
+		expect(await verifier()(await token({ aud: 'semantic-zotero' }))).toEqual({ id: 'oidc:user-1', method: 'oidc', client: 'semantic-zotero' });
 		expect((await verifier()(await token({ aud: 'account', azp: 'semantic-zotero' }))).id).toBe('oidc:user-1');
+	});
+	it('names the accepted client: azp before aud, among several audiences', async () => {
+		const v = verifier({ audience: ['semantic-zotero', 'openwebui'] });
+		expect((await v(await token({ aud: 'account', azp: 'openwebui' }))).client).toBe('openwebui');
+		expect((await v(await token({ aud: ['x', 'openwebui'], azp: 'x' }))).client).toBe('openwebui');
+		expect((await v(await token({ aud: 'semantic-zotero', azp: 'openwebui' }))).client).toBe('openwebui');
 	});
 	it('refuses other audiences, issuers, expired and forged tokens', async () => {
 		await expect(verifier()(await token({ aud: 'other' }))).rejects.toMatchObject({ status: 401 });

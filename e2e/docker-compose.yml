@@ -12,7 +12,9 @@ services:
     environment:
       AUTH: oidc,zotero-group
       OIDC_ISSUER: http://mocks:9002/realms/test
-      OIDC_AUDIENCE: semantic-zotero
+      OIDC_AUDIENCE: semantic-zotero,openwebui
+      OIDC_CLIENT_SCOPES: openwebui:papers+authors
+      MAX_QUEUED_PER_USER: "3"
       OIDC_REQUIRED_ROLES: s2-users
       ZOTERO_API_URL: http://mocks:9003
       ZOTERO_GROUP_IDS: "4711"

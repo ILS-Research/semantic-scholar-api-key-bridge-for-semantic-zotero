@@ -1,8 +1,8 @@
 # Semantic Scholar Bridge for Semantic Zotero
 
 Shares **one Semantic Scholar API key** with a group of people – an institute, a lab, a course –
-so that [Semantic Zotero](https://github.com/AgiNetz/semantic-zotero) (and other clients of the
-Semantic Scholar Graph API) work reliably without everyone applying for a personal key.
+so that [Semantic Zotero](https://github.com/AgiNetz/semantic-zotero), MCP servers for AI assistants
+(e.g. in Open WebUI) and other clients of the Semantic Scholar Graph API work reliably without everyone applying for a personal key.
 
 Without a key, all anonymous users worldwide share one small quota, and most requests end in
 `HTTP 429`. With a personal key it works, but each person has to apply for one. The bridge sits in
@@ -15,7 +15,10 @@ between:
 - **429 handling:** retries with `Retry-After` / backoff; if Semantic Scholar stays busy, the client
   gets `503` with `Retry-After`.
 - **Cache:** identical requests are answered from memory (24 h by default), shared by all users.
-- **Allowlist:** only read-only paper endpoints are forwarded (see below).
+- **Allowlist:** only read-only paper endpoints are forwarded; author endpoints only for clients you
+  allow (see below).
+- **Per-user cap:** a user with more than `MAX_QUEUED_PER_USER` waiting requests (e.g. an agent in a
+  loop) gets `429` + `Retry-After` at once instead of crowding out everyone else.
 - **Privacy:** user credentials are never forwarded to Semantic Scholar; the log contains a short
   hash per user, the method, the start of the path, status and duration – no keys, tokens or search terms.
 
@@ -37,16 +40,20 @@ instead of using your sync key: the bridge only needs to know who you are and wh
 in. For a **public** group, a key without any permissions is enough; for a **private** group, give
 the key read access to that group only.
 
-Forwarded endpoints (everything else: `404`):
+Forwarded endpoints, in two access levels (everything else: `404`):
 
-- `GET /graph/v1/paper/…` – papers by any ID, their references, citations and authors; search,
-  `search/match`, `search/bulk`, `autocomplete`
-- `POST /graph/v1/paper/batch`
-- `GET /recommendations/v1/papers/forpaper/…`, `POST /recommendations/v1/papers`
+| Level | Endpoints | Who |
+|---|---|---|
+| `papers` | `GET /graph/v1/paper/…` (papers by any ID, references, citations, authors; search, `search/match`, `search/bulk`, `autocomplete`), `POST /graph/v1/paper/batch`, `GET /recommendations/v1/papers/forpaper/…`, `POST /recommendations/v1/papers` | everyone |
+| `papers+authors` | additionally `GET /graph/v1/author/…` (author, their papers, author search), `POST /graph/v1/author/batch` | OIDC clients listed in `OIDC_CLIENT_SCOPES` |
+
+Datasets, snippet search and releases are never forwarded. An author endpoint requested by a client
+with level `papers` gets `403`.
 
 Responses carry `X-Bridge-Cache: hit|miss`. Errors are JSON `{"error", "message"}`:
-`401` (no or invalid credentials), `403` (valid, but not allowed), `404` (endpoint not
-forwarded), `503` + `Retry-After` (Semantic Scholar busy), `502` (Semantic Scholar or the
+`401` (no or invalid credentials), `403` (valid, but not allowed for this account or client),
+`404` (endpoint not forwarded), `429` + `Retry-After` (too many of your requests waiting),
+`503` + `Retry-After` (Semantic Scholar busy), `502` (Semantic Scholar or the
 authentication service unreachable).
 
 ## Running it
@@ -69,10 +76,12 @@ All settings are environment variables; see [.env.example](.env.example).
 | `AUTH` | – | `oidc`, `zotero-group` or `oidc,zotero-group` |
 | `OIDC_ISSUER` | – | Issuer URL; the JWKS is found via `/.well-known/openid-configuration` |
 | `OIDC_AUDIENCE` | – | Client ID(s); a token is accepted if `aud` contains one or `azp` equals one |
+| `OIDC_CLIENT_SCOPES` | – | access level per client, e.g. `openwebui:papers+authors`; others get `papers` |
 | `OIDC_REQUIRED_ROLES`, `OIDC_REQUIRED_GROUPS` | – | any of these (Keycloak realm/client roles, `roles`, `groups`) |
 | `ZOTERO_GROUP_IDS` | – | Zotero group IDs (number in the group's URL) |
 | `ZOTERO_API_URL` | `https://api.zotero.org` | also works with a self-hosted Zotero data server |
 | `RATE_PER_SEC` | `1` | requests per second to Semantic Scholar |
+| `MAX_QUEUED_PER_USER` | `10` | waiting requests per user before `429`; `0`: no limit |
 | `QUEUE_TIMEOUT_SEC` | `60` | longest wait in the queue before `503` |
 | `RETRY_BUDGET_SEC` | `30` | longest time spent retrying after `429` |
 | `CACHE_TTL_SEC`, `CACHE_NOT_FOUND_TTL_SEC`, `CACHE_MAX_MB` | `86400`, `3600`, `256` | response cache |
@@ -85,13 +94,35 @@ Semantic Zotero the redirect URI is `http://127.0.0.1:23119/semanticzotero/callb
 `OIDC_ISSUER=https://<keycloak>/realms/<realm>` and `OIDC_AUDIENCE=semantic-zotero`. To limit
 access, create a role and set `OIDC_REQUIRED_ROLES`.
 
+## MCP servers / Open WebUI
+
+An MCP server for Semantic Scholar (e.g. in [Open WebUI](https://openwebui.com)) can use the shared
+key without any user having a key of their own:
+
+1. Point the MCP server's Semantic Scholar addresses to the bridge
+   (`https://<bridge>/graph/v1`, `https://<bridge>/recommendations/v1`) and remove its API key.
+2. Let Open WebUI pass the signed-in user's OIDC access token to the tool server (OAuth forwarding),
+   and let the MCP server forward that same `Authorization: Bearer` header to the bridge. Each person
+   then has their own place in the fair queue and their own cap.
+3. Allow the client the token is issued for (its `azp`, e.g. `openwebui`) and give it author
+   lookups, which MCP tools use:
+   ```
+   OIDC_AUDIENCE=semantic-zotero,openwebui
+   OIDC_CLIENT_SCOPES=openwebui:papers+authors
+   ```
+4. For calls without a signed-in person (background jobs, tests), the MCP server can fetch a token
+   with the client-credentials grant of a confidential client (e.g. `semantic-scholar-mcp`) and add
+   that client the same way. All such calls share one place in the queue.
+
+The status page shows requests and average time per client (no user names).
+
 ## Development
 
 Everything runs in Docker:
 
 - `./build.sh` – install, typecheck, unit tests, build
 - `./e2e/run.sh` – production image against mocks of Semantic Scholar, an OIDC provider and the
-  Zotero API (Docker Compose, ~20 s)
+  Zotero API (Docker Compose, ~15 s)
 - `./build.sh image` – local production image
 
 ## License
