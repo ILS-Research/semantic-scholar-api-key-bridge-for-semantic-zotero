@@ -1,0 +1,31 @@
+# E2E: production image of the bridge against mocks of Semantic Scholar, an OIDC provider and the
+# Zotero API. Run with ./e2e/run.sh.
+services:
+  mocks:
+    image: node:22-alpine
+    command: node /e2e/mocks.mjs
+    volumes: [./mocks.mjs:/e2e/mocks.mjs:ro]
+
+  bridge:
+    image: semantic-scholar-bridge:e2e
+    build: ..
+    environment:
+      AUTH: oidc,zotero-group
+      OIDC_ISSUER: http://mocks:9002/realms/test
+      OIDC_AUDIENCE: semantic-zotero
+      OIDC_REQUIRED_ROLES: s2-users
+      ZOTERO_API_URL: http://mocks:9003
+      ZOTERO_GROUP_IDS: "4711"
+      S2_BASE_URL: http://mocks:9001
+      S2_API_KEY: bridge-key
+      RATE_PER_SEC: "20"
+      RETRY_BUDGET_SEC: "1"
+    depends_on: [mocks]
+
+  tests:
+    image: node:22-alpine
+    command: node --test --test-reporter=spec /e2e/test.mjs
+    environment:
+      BRIDGE: http://bridge:8080
+    volumes: [./test.mjs:/e2e/test.mjs:ro]
+    depends_on: [bridge]

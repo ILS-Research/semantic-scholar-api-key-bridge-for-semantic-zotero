@@ -1,0 +1,13 @@
+# Example deployment. Put the bridge behind your HTTPS reverse proxy; it serves
+# /graph/v1/…, /recommendations/v1/…, /healthz and a status page on /.
+services:
+  semantic-scholar-bridge:
+    build: .
+    image: semantic-scholar-bridge:latest
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Extra trusted CAs, e.g. an internal CA signing the OIDC provider:
+    # volumes:
+    #   - ./ca-certificates:/usr/local/share/ca-certificates/extra:ro
+    restart: unless-stopped
