@@ -1,7 +1,7 @@
 # Semantic Scholar Bridge
 
 SvelteKit (adapter-node) service sharing one Semantic Scholar API key: OIDC or Zotero-group auth,
-fair rate limiting, 429 retries, cache. Client: the Semantic Zotero plugin (Zotero 7–10). Public repo:
+fair rate limiting, 429 retries, cache. Clients: the Semantic Zotero plugin (Zotero 7–10) and MCP servers (Open WebUI), with access levels per OIDC client. Public repo:
 keep deployment-specific details (hosts, realms, client IDs, keys) out of it; they belong in the deployment.
 
 | Task | Command | Log |

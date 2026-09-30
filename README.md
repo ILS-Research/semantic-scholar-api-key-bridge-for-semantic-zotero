@@ -1,8 +1,13 @@
-# Semantic Scholar Bridge for Semantic Zotero
+# Semantic Scholar Bridge
 
 Shares **one Semantic Scholar API key** with a group of people – an institute, a lab, a course –
-so that [Semantic Zotero](https://github.com/AgiNetz/semantic-zotero), MCP servers for AI assistants
-(e.g. in Open WebUI) and other clients of the Semantic Scholar Graph API work reliably without everyone applying for a personal key.
+so that their tools work reliably without everyone applying for a personal key. Clients so far:
+
+- [Semantic Zotero](https://github.com/AgiNetz/semantic-zotero) – references and citations in Zotero
+  (the project started as its bridge, hence the repository name), see [Keycloak](#keycloak);
+- **MCP servers** for AI assistants, e.g. in [Open WebUI](https://openwebui.com), see
+  [MCP servers / Open WebUI](#mcp-servers--open-webui);
+- any other client of the Semantic Scholar Graph API that can send a bearer token or a Zotero key.
 
 Without a key, all anonymous users worldwide share one small quota, and most requests end in
 `HTTP 429`. With a personal key it works, but each person has to apply for one. The bridge sits in
@@ -89,8 +94,10 @@ All settings are environment variables; see [.env.example](.env.example).
 
 ### Keycloak
 
-Create a **public** client (e.g. `semantic-zotero`) with *Standard flow* and PKCE (S256); for
-Semantic Zotero the redirect URI is `http://127.0.0.1:23119/semanticzotero/callback`. Set
+Each client application gets its own Keycloak client; list all of them in `OIDC_AUDIENCE`.
+
+For **Semantic Zotero**, create a **public** client (e.g. `semantic-zotero`) with *Standard flow*
+and PKCE (S256); the redirect URI is `http://127.0.0.1:23119/semanticzotero/callback`. Set
 `OIDC_ISSUER=https://<keycloak>/realms/<realm>` and `OIDC_AUDIENCE=semantic-zotero`. To limit
 access, create a role and set `OIDC_REQUIRED_ROLES`.
 

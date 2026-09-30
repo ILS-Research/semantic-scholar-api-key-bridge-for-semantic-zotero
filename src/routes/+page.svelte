@@ -7,7 +7,7 @@
 <main>
 	<h1>Semantic Scholar Bridge</h1>
 	<p>
-		Forwards requests from <a href="https://github.com/AgiNetz/semantic-zotero">Semantic Zotero</a> and MCP servers to the
+		Forwards requests from tools such as <a href="https://github.com/AgiNetz/semantic-zotero">Semantic Zotero</a> and MCP servers to the
 		<a href="https://www.semanticscholar.org/product/api">Semantic Scholar API</a> with a shared key.
 	</p>
 	{#if data.enabled}
