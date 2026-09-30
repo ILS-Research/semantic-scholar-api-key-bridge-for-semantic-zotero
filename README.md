@@ -91,6 +91,7 @@ All settings are environment variables; see [.env.example](.env.example).
 | `QUEUE_TIMEOUT_SEC` | `60` | longest wait in the queue before `503` |
 | `RETRY_BUDGET_SEC` | `30` | longest time spent retrying after `429` |
 | `CACHE_TTL_SEC`, `CACHE_NOT_FOUND_TTL_SEC`, `CACHE_MAX_MB` | `86400`, `3600`, `256` | response cache |
+| `CLIENT_IP_HEADER` | – | header with the client address set by your proxy (e.g. `x-real-ip`); sent to the Zotero API as `Zotero-Forwarded-For`, so a self-hosted dataserver blocks only the sender of invalid keys, not the bridge |
 | `AUTH_CACHE_SEC` | `300` | how long a successful authentication is remembered |
 
 ### Keycloak

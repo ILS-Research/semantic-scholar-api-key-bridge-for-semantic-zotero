@@ -4,9 +4,9 @@
  */
 import { createHash } from 'node:crypto';
 import type { AuthMethod } from '../config';
-import { AuthError, type Identity } from './types';
+import { AuthError, type AuthContext, type Identity } from './types';
 
-export type Verifier = (credential: string) => Promise<Identity>;
+export type Verifier = (credential: string, ctx?: AuthContext) => Promise<Identity>;
 
 interface Remembered {
 	result: Identity | AuthError;
@@ -25,7 +25,7 @@ export class Authenticator {
 		private now: () => number = Date.now
 	) {}
 
-	async authenticate(headers: Headers): Promise<Identity> {
+	async authenticate(headers: Headers, ctx: AuthContext = {}): Promise<Identity> {
 		const bearer = /^Bearer\s+(\S+)$/i.exec(headers.get('authorization') ?? '')?.[1];
 		const zoteroKey = headers.get('zotero-api-key')?.trim();
 		const [method, credential] = bearer ? (['oidc', bearer] as const) : zoteroKey ? (['zotero-group', zoteroKey] as const) : [null, null];
@@ -40,11 +40,12 @@ export class Authenticator {
 			return hit.result;
 		}
 		try {
-			const identity = await verify(credential);
+			const identity = await verify(credential, ctx);
 			this.remember(key, identity, this.cacheMs);
 			return identity;
 		} catch (e) {
-			if (e instanceof AuthError) this.remember(key, e, REFUSAL_MS);
+			// Temporary refusals (429) are not remembered
+			if (e instanceof AuthError && e.status !== 429) this.remember(key, e, REFUSAL_MS);
 			throw e;
 		}
 	}
@@ -63,4 +64,4 @@ export class Authenticator {
 	}
 }
 
-export { AuthError, type Identity } from './types';
+export { AuthError, type AuthContext, type Identity } from './types';

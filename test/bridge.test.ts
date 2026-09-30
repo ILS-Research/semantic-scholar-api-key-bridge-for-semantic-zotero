@@ -99,6 +99,26 @@ describe('Bridge', () => {
 		expect((await call('/graph/v1/paper/x')).status).toBe(500);
 		expect((await call('/graph/v1/paper/x')).status).toBe(200);
 	});
+	it('passes the client address from CLIENT_IP_HEADER to the verifier; auth block → 429', async () => {
+		const ctxs: any[] = [];
+		const cfg = parseConfig({ AUTH: 'zotero-group', ZOTERO_GROUP_IDS: '1', S2_BASE_URL: 'https://s2', CLIENT_IP_HEADER: 'X-Real-IP' });
+		const bridge = new Bridge(cfg, {
+			fetch: (async () => Response.json({})) as any,
+			verifiers: { 'zotero-group': async (k, ctx) => {
+				ctxs.push(ctx);
+				if (k === 'blocked') throw new AuthError(429, 'blocked', 120);
+				return { id: 'zotero:1', method: 'zotero-group' };
+			} }
+		});
+		const call = (key: string, h: Record<string, string>) =>
+			bridge.handle(new Request('http://bridge/graph/v1/paper/x', { headers: { 'zotero-api-key': key, ...h } }));
+		expect((await call('a', { 'x-real-ip': '192.0.2.1, 10.0.0.1' })).status).toBe(200);
+		expect((await call('b', { 'x-real-ip': 'evil header' })).status).toBe(200);
+		expect(ctxs.map((c) => c.clientIp)).toEqual(['192.0.2.1', undefined]);
+		const r = await call('blocked', {});
+		expect(r.status).toBe(429);
+		expect(r.headers.get('retry-after')).toBe('120');
+	});
 	it('upstream unreachable: 502', async () => {
 		const { call } = setup(() => { throw new Error('ECONNREFUSED'); });
 		expect((await call('/graph/v1/paper/x')).status).toBe(502);

@@ -81,6 +81,21 @@ describe('zotero group', () => {
 		await expect(v('WrongKeyWrongKeyWrongKey')).rejects.toMatchObject({ status: 401 });
 		await expect(v('x')).rejects.toMatchObject({ status: 401 });
 	});
+	it('sends the client address as Zotero-Forwarded-For and passes a block (429) on', async () => {
+		const seen: any[] = [];
+		const f = (async (url: string, init: any) => {
+			seen.push(init.headers);
+			return init.headers['Zotero-API-Key'] === 'BlockedBlockedBlocked1'
+				? new Response('Too many authentication failures', { status: 429 })
+				: fetchFor([7])(url, init);
+		}) as any;
+		const v = zoteroVerifier({ apiUrl: 'https://z', groupIds: [7], fetch: f });
+		await v(KEY, { clientIp: '192.0.2.7' });
+		expect(seen.every((h) => h['Zotero-Forwarded-For'] === '192.0.2.7')).toBe(true);
+		await v(KEY);
+		expect(seen.at(-1)['Zotero-Forwarded-For']).toBeUndefined();
+		await expect(v('BlockedBlockedBlocked1')).rejects.toMatchObject({ status: 429, retryAfterSec: 300 });
+	});
 });
 
 describe('Authenticator', () => {

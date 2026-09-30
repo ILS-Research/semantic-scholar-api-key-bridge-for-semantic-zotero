@@ -36,6 +36,8 @@ export interface Config {
 	cacheMaxBytes: number;
 	/** How long a successful authentication is remembered. */
 	authCacheMs: number;
+	/** Request header carrying the client address, set by the trusted proxy in front (e.g. x-real-ip); empty: none. */
+	clientIpHeader: string;
 	/** Show counters on / (no user data). */
 	statusPage: boolean;
 }
@@ -97,6 +99,7 @@ export function parseConfig(env: Record<string, string | undefined>): Config {
 		cacheNotFoundTtlMs: num(env, 'CACHE_NOT_FOUND_TTL_SEC', 3600, 0) * 1000,
 		cacheMaxBytes: num(env, 'CACHE_MAX_MB', 256, 0) * 1024 * 1024,
 		authCacheMs: num(env, 'AUTH_CACHE_SEC', 300, 0) * 1000,
+		clientIpHeader: (env.CLIENT_IP_HEADER ?? '').trim().toLowerCase(),
 		statusPage: (env.STATUS_PAGE ?? 'true') !== 'false'
 	};
 	if (auth.includes('oidc')) {

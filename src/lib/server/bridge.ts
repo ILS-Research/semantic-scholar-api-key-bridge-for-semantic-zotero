@@ -63,10 +63,11 @@ export class Bridge {
 
 		let who: Identity;
 		try {
-			who = await this.auth.authenticate(request.headers);
+			who = await this.auth.authenticate(request.headers, { clientIp: this.clientIp(request) });
 		} catch (e) {
 			if (e instanceof AuthError) {
 				stats.rejectedAuth++;
+				if (e.status === 429) return json(429, 'too_many_requests', e.message, { 'retry-after': String(e.retryAfterSec ?? 300) });
 				return json(e.status, e.status === 401 ? 'unauthorized' : 'forbidden', e.message,
 					e.status === 401 ? { 'www-authenticate': 'Bearer' } : {});
 			}
@@ -130,6 +131,13 @@ export class Bridge {
 			log(`upstream error: ${(e as Error).message}`);
 			return json(502, e instanceof UpstreamError ? 'upstream_unreachable' : 'error', 'Semantic Scholar could not be reached.');
 		}
+	}
+
+	/** First address in CLIENT_IP_HEADER, if configured and well-formed. */
+	private clientIp(request: Request): string | undefined {
+		if (!this.cfg.clientIpHeader) return undefined;
+		const ip = request.headers.get(this.cfg.clientIpHeader)?.split(',')[0].trim() ?? '';
+		return /^[0-9a-fA-F:.]{2,45}$/.test(ip) ? ip : undefined;
 	}
 
 	private scopeOf(who: Identity): Scope {
