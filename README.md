@@ -68,7 +68,8 @@ cp .env.example .env      # fill in S2_API_KEY and the authentication
 docker compose -f docker-compose.example.yml up -d --build
 ```
 
-Put it behind your HTTPS reverse proxy. `GET /healthz` answers `ok`; `/` shows counters (no user
+Put it behind your HTTPS reverse proxy, on its own host name or under a path prefix that the proxy strips
+(e.g. `https://example.org/s2/` → `http://bridge:8080/`). `GET /healthz` answers `ok`; `/` shows counters (no user
 data; `STATUS_PAGE=false` hides them).
 
 ### Configuration

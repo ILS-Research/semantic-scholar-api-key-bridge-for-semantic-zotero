@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (30.09.2026)
+
+- Status page without client-side scripts, so it also works behind a path prefix (e.g. `/s2/`).
+
 ## 0.2.0 (30.09.2026)
 
 - MCP servers / Open WebUI: several OIDC clients (`OIDC_AUDIENCE` list), access levels per client

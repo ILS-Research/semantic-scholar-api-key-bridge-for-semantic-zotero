@@ -1,6 +1,6 @@
 {
 	"name": "semantic-scholar-bridge",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Shares one Semantic Scholar API key with a group of users: authentication (OIDC or Zotero group), rate limiting, caching",
 	"license": "MIT",
 	"private": true,
